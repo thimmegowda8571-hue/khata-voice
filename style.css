@@ -1,0 +1,52 @@
+:root{--ink:#0f2a2e;--teal:#0e7c7b;--sun:#f2a33a;--bg:#eef4f3;--line:#d0dedc;--red:#c0392b;--green:#1b7f4b}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:18px/1.45 "Noto Sans","Nirmala UI","Segoe UI",system-ui,sans-serif;padding-bottom:84px}
+header{background:var(--ink);color:#fff;display:flex;justify-content:space-between;align-items:center;padding:12px 16px}
+.logo{font-weight:800;font-size:22px}
+select{font-size:17px;padding:6px 8px;border-radius:8px;border:0}
+#strip{background:var(--teal);color:#fff;padding:8px 16px}
+main{max-width:560px;margin:0 auto;padding:18px 16px}
+#v-bolo{text-align:center}
+button{font:inherit;cursor:pointer}
+button:focus-visible,textarea:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #2d6cdf;outline-offset:2px}
+.mic{width:140px;height:140px;border-radius:50%;border:0;background:var(--sun);font-size:56px;box-shadow:0 8px 0 #c47d12;margin-top:6px}
+.mic.rec{background:var(--red);box-shadow:0 0 0 0 rgba(192,57,43,.6);animation:ring 1.2s infinite}
+@keyframes ring{to{box-shadow:0 0 0 28px rgba(192,57,43,0)}}
+.cap{font-size:22px;font-weight:700;margin:14px 0 8px}
+textarea,input{width:100%;font:inherit;padding:10px 12px;border:2px solid var(--line);border-radius:12px;background:#fff;color:var(--ink)}
+textarea{font-size:20px;resize:vertical}
+.btn{width:100%;min-height:54px;margin-top:10px;border:0;border-radius:12px;background:var(--teal);color:#fff;font-weight:700;font-size:20px}
+.btn.alt{background:#fff;color:var(--ink);border:2px solid var(--ink)}
+.row{display:flex;gap:10px}.row .btn{flex:1}
+.card{background:#fff;border-radius:16px;padding:14px;margin-top:16px;text-align:left;box-shadow:0 2px 10px rgba(15,42,46,.12)}
+.card h2{margin:0 0 6px;font-size:24px}
+.f{display:flex;justify-content:space-between;font-size:22px;padding:3px 0}
+.chk{background:#fff1c9;padding:0 6px;border-radius:6px}
+.warn{color:var(--red);font-weight:700}
+.ans{font-size:24px;font-weight:700;margin-top:16px}
+.mode{font-size:14px;opacity:.65;cursor:pointer}
+ul{list-style:none;margin:12px 0 0;padding:0}
+li{background:#fff;border-radius:16px;margin-bottom:10px;box-shadow:0 2px 10px rgba(15,42,46,.1);overflow:hidden}
+.top{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer}
+.av{width:42px;height:42px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font-weight:700}
+.nm{flex:1;font-weight:700}
+.amt{font-weight:800;font-size:22px}.amt.d{color:var(--red)}.amt.z{color:var(--green)}
+.hist{padding:4px 14px 12px;border-top:1px solid var(--line);font-size:16px}
+.e{display:flex;align-items:center;gap:6px;padding:4px 0}.e span:first-child{opacity:.6;min-width:78px}.it{flex:1}
+.ic{border:0;background:none;font-size:20px;padding:4px 8px}
+.acts{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.mini{padding:7px 12px;border-radius:10px;border:2px solid var(--ink);background:#fff;font-size:16px}.mini.bad{color:var(--red);border-color:var(--red)}
+.stat{background:#fff;border-radius:16px;padding:14px;margin-bottom:10px;display:flex;justify-content:space-between;font-size:21px;border-left:8px solid var(--sun)}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--ink)}
+nav button{flex:1;min-height:64px;border:0;background:none;color:#a9c4c1;font-size:17px}
+nav button.on{color:#fff;font-weight:700;box-shadow:inset 0 4px var(--sun)}
+dialog{border:0;border-radius:16px;padding:16px;width:min(92vw,420px)}
+dialog::backdrop{background:rgba(15,42,46,.6)}
+dialog label{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+@media (prefers-reduced-motion:reduce){.mic.rec{animation:none}}
+.rate{width:130px;padding:6px 8px;font-size:18px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.tr{font-size:16px;font-weight:700;padding:6px 0}
+h3{margin:18px 0 8px}small{font-weight:400;opacity:.75}
+.dot{display:inline-block;width:16px;height:16px;border-radius:50%;margin-right:6px;vertical-align:middle;border:2px solid rgba(0,0,0,.18)}
+.dot.g{background:#1b7f4b}.dot.y{background:#f2a33a}.dot.r{background:#c0392b}.dot.n{background:#cbd5d4}
