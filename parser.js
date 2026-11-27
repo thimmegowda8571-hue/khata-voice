@@ -15,11 +15,16 @@ const LEX = {
   bikri: ['बिक्री','विक्री','விற்பனை','ಮಾರಾಟ','అమ్మకాల','అమ్మకం','വിൽപ്പന','বিক্রি'],
   'sabse zyada': ['जास्त','अधिक','அதிக','ಹೆಚ್ಚು','ఎక్కువ','കൂടുതൽ','বেশি'],
   nagad: ['नकद','कैश','रोख','ரொக்க','ಕ್ಯಾಶ್','ನಗದು','నగదు','క్యాష్','പണമായി','ক্যাশ','নগদ'],
+  aur: ['और','आणि','மற்றும்','ಮತ್ತು','మరియు','এবং'],
+  kilo: ['किलो','கிலோ','ಕಿಲೋ','కిలో','കിലോ','কিলো'],
+  litre: ['लीटर','லிட்டர்','ಲೀಟರ್','లీటర్','ലിറ്റർ','লিটার'],
+  packet: ['पैकेट','பாக்கெட்','ಪ್ಯಾಕೆಟ್','ప్యాకెట్','പാക്കറ്റ്','প্যাকেট'],
 };
 const RUP_EXACT = ['रु','ரூ','ರೂ','రూ','രൂ','rs'];
 const RUP_PREFIX = ['रुपय','ரூபாய்','ರೂಪಾಯಿ','రూపాయ','രൂപയ','টাকা','rupa','rupe'];
 const FILL = ['um','umm','uh','uhh','hmm','achha','acha','matlab','basically'];
-const STOP = new Set(['ne','ko','ka','ki','se','hai','saman','liya','diya','diye','udhaar','baaki','kitna','aaj','bikri','sabse','zyada','nagad','चा','ची','चे','च्या']);
+const STOP = new Set(['ne','ko','ka','ki','se','hai','saman','liya','diya','diye','udhaar','baaki','kitna','aaj','bikri','sabse','zyada','nagad','चा','ची','चे','च्या','aur','and','kilo','kg','litre','liter','ltr','packet','dozen','gram','piece']);
+const UNITS = ['kilo','kg','litre','liter','ltr','packet','dozen','gram','piece'];
 
 // Native digits (Devanagari, Bengali, Tamil, Telugu, Kannada, Malayalam) -> 0-9
 const ZEROS = [0x966, 0x9E6, 0xBE6, 0xC66, 0xCE6, 0xD66];
@@ -67,7 +72,21 @@ function nameOf(t) {
   return out.join(' ').replace(/^(.{2,}?)ने$/, '$1').trim();   // Marathi "रमेशने"
 }
 
-function parse(raw, customers = []) {
+// Item mode: "Ramesh ko 2 kilo atta aur ek tel udhaar" -> [{item, qty, unit}] (prices come from the shop's price memory)
+function itemLines(t) {
+  const tk = t.split(' ');
+  const i = tk.findIndex(w => ['ne', 'ko', 'se'].includes(w));
+  const start = i >= 0 ? i + 1 : nameOf(t).split(' ').filter(Boolean).length;
+  const end = tk.findIndex((w, j) => j >= start && ['liya', 'diya', 'diye', 'udhaar', 'nagad', 'baaki'].includes(w));
+  const body = tk.slice(start, end < 0 ? undefined : end).join(' ');
+  return body.split(/\s+(?:aur|and)\s+/).map(ch => {
+    const w = ch.split(' ').filter(Boolean), q = w.find(x => /^\d/.test(x));
+    const item = w.filter(x => !/^\d/.test(x) && !UNITS.includes(x) && !STOP.has(x)).join(' ');
+    return item ? { item, qty: q ? +q : 1, unit: w.find(x => UNITS.includes(x)) || '' } : null;
+  }).filter(Boolean);
+}
+
+function parse(raw, customers = [], prices = {}) {
   const t = normalize(raw);
   const res = { raw, text: t, type: 'unknown', flags: [] };
   const nums = (t.match(/\d+(\.\d+)?/g) || []).map(Number);
@@ -85,6 +104,18 @@ function parse(raw, customers = []) {
 
   const isPay = /(diye|diya|jama|wapas|paid|mile|mila)/.test(t) && !/(saman|liya|udhaar|baaki)/.test(t);
   if (isPay) return { ...res, type: 'payment', total: 0, paid: nums[0] || 0, due: -(nums[0] || 0), items: 'payment' };
+
+  const tk0 = t.split(' ');
+  const knownItem = Object.keys(prices).some(k => k.split(' ').every(w => tk0.includes(w)));
+  if (!/\d+ ka\b/.test(t) && (UNITS.some(u => tk0.includes(u)) || knownItem)) {
+    const lines = itemLines(t);
+    if (lines.length) {
+      const pm = t.match(/(\d+(?:\.\d+)?)\s*(?:diya|diye|paid|jama)/), cash = /\bnagad\b/.test(t);
+      res.flags = res.flags.filter(f => f !== 'total');
+      if (!cash && !pm && !/(udhaar|baaki|credit|khata)/.test(t)) res.flags.push('paid');
+      return { ...res, type: 'sale', mode: 'items', lines, paidSpec: pm ? +pm[1] : (cash ? 'all' : 0) };
+    }
+  }
 
   const total = nums[0] || 0;
   const pm = t.match(/(\d+(?:\.\d+)?)\s*(?:diya|diye|paid|jama)/);
