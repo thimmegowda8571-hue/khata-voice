@@ -62,14 +62,32 @@ const byName = n => db.customers.find(c => c.name.toLowerCase() === n.toLowerCas
 function ensureCustomer(name) { let c = byName(name); if (!c) { c = { id: Date.now(), name, phone: '' }; db.customers.push(c); } return c; }
 
 // ---------- speech ----------
-function speak(text) {
-  if (!('speechSynthesis' in window)) return;
-  speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = LANGS[lang]; speechSynthesis.speak(u);
+let voices = [];
+if ('speechSynthesis' in window) { voices = speechSynthesis.getVoices(); speechSynthesis.onvoiceschanged = () => { voices = speechSynthesis.getVoices(); }; }
+// Phones only allow voice after a tap, so the first tap/key "unlocks" speech.
+['pointerdown', 'keydown'].forEach(ev => addEventListener(ev, () => {
+  if (window.ttsUnlocked || !('speechSynthesis' in window)) return;
+  window.ttsUnlocked = true; const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u);
+}));
+function speak(text, onDone) {
+  if (!('speechSynthesis' in window) || !text) { if (onDone) onDone(); return; }
+  speechSynthesis.cancel();
+  setTimeout(() => {   // short pause: Chrome can drop speech that starts right after cancel()
+    const u = new SpeechSynthesisUtterance(text), code = LANGS[lang]; u.lang = code;
+    const v = voices.find(x => x.lang.replace('_', '-') === code) || voices.find(x => x.lang.startsWith(code.slice(0, 2))); if (v) u.voice = v;
+    let done = false; const fin = () => { if (!done) { done = true; if (onDone) onDone(); } };
+    u.onend = fin; u.onerror = fin; setTimeout(fin, 12000);
+    speechSynthesis.resume(); speechSynthesis.speak(u);
+  }, 150);
 }
-function listen(onText, onEnd) {
+function listen(onText, onEnd, onInterim) {
   if (!SR) { onEnd && onEnd('unsupported'); return null; }
-  const r = new SR(); r.lang = LANGS[lang]; r.interimResults = false;
-  r.onresult = ev => onText(ev.results[0][0].transcript);
+  const r = new SR(); r.lang = LANGS[lang]; r.interimResults = !!onInterim;
+  r.onresult = ev => {
+    let txt = '', fin = false;
+    for (let k = ev.resultIndex; k < ev.results.length; k++) { txt += ev.results[k][0].transcript; if (ev.results[k].isFinal) fin = true; }
+    if (fin) onText(txt); else if (onInterim) onInterim(txt);   // interim text shows live while speaking
+  };
   r.onerror = ev => onEnd && onEnd(ev.error);
   r.onend = () => onEnd && onEnd();
   try { r.start(); } catch (e) { onEnd && onEnd('error'); }
@@ -97,9 +115,13 @@ async function understand(text) {
 // ---------- Speak screen ----------
 let pending = null, yesNo = null;
 const stopListen = () => { if (yesNo) { try { yesNo.abort(); } catch (e) {} yesNo = null; } };
-const answer = msg => { $('#out').innerHTML = `<p class="ans">${esc(msg)}</p>`; speak(msg); };
-const problem = msg => { $('#out').innerHTML = `<p class="warn">${esc(msg)}</p>`; speak(msg); };
-async function onGo() { const text = $('#say').value.trim(); if (text) render(await understand(text)); }
+const answer = msg => { $('#out').innerHTML = `<p class="ans">${esc(msg)} <button class="ic" id="re" aria-label="Read aloud">🔊</button></p>`; $('#re').onclick = () => speak(msg); speak(msg); };
+const problem = msg => { $('#out').innerHTML = `<p class="warn">${esc(msg)} <button class="ic" id="re" aria-label="Read aloud">🔊</button></p>`; $('#re').onclick = () => speak(msg); speak(msg); };
+async function onGo() {
+  const text = $('#say').value.trim();
+  if (!text) { $('#out').innerHTML = `<p class="warn">${esc(t('ph'))}</p>`; return; }   // empty box: show an example
+  render(await understand(text));
+}
 
 function render(r) {
   pending = null; stopListen();
@@ -114,16 +136,17 @@ function render(r) {
   if (r.flags.includes('customer') || r.flags.includes('total') || !(r.total || r.paid)) return problem(r.flags.includes('customer') ? t('whose') : t('howmuch'));
   pending = r;
   const f = (k, v, bad) => `<div class="f"><span>${t(k)}</span><b class="${bad ? 'chk' : ''}">${rupee(v)}${bad ? ' ⚠' : ''}</b></div>`;
-  $('#out').innerHTML = `<div class="card"><h2>${esc(r.customer)}</h2>` + (r.type === 'payment' ? f('paid', r.paid) : f('total', r.total) + f('paid', r.paid, r.flags.includes('paid')) + f('due', r.due)) +
+  $('#out').innerHTML = `<div class="card"><h2>${esc(r.customer)} <button class="ic" id="re" aria-label="Read aloud">🔊</button></h2>` + (r.type === 'payment' ? f('paid', r.paid) : f('total', r.total) + f('paid', r.paid, r.flags.includes('paid')) + f('due', r.due)) +
     `<div class="row"><button class="btn" id="yes">${t('save')}</button><button class="btn alt" id="no">${t('no')}</button></div></div>`;
-  $('#yes').onclick = saveEntry; $('#no').onclick = cancel;
+  $('#yes').onclick = saveEntry; $('#no').onclick = cancel; $('#re').onclick = () => speak(readback(r));
   confirmSpeak(r);
 }
+const readback = r => r.type === 'payment' ? `${r.customer}. ${t('paid')} ${r.paid}. ${t('askSave')}`
+  : `${r.customer}. ${t('total')} ${r.total}. ${t('paid')} ${r.paid}. ${t('due')} ${r.due}. ${t('askSave')}`;
 function confirmSpeak(r) {
   stopListen();
-  speak(r.type === 'payment' ? `${r.customer}. ${t('paid')} ${r.paid}. ${t('askSave')}` : `${r.customer}. ${t('total')} ${r.total}. ${t('paid')} ${r.paid}. ${t('due')} ${r.due}. ${t('askSave')}`);
-  setTimeout(() => { if (pending !== r) return; yesNo = listen(txt => {
-    const w = txt.toLowerCase().split(/\s+/); if (w.some(x => YES.includes(x))) saveEntry(); else if (w.some(x => NO.includes(x))) cancel(); }); }, 3000);
+  speak(readback(r), () => { if (pending !== r) return; yesNo = listen(txt => {
+    const w = txt.toLowerCase().split(/\s+/); if (w.some(x => YES.includes(x))) saveEntry(); else if (w.some(x => NO.includes(x))) cancel(); }); });
 }
 
 // ---------- Item mode: say items, the app uses remembered rates to make the bill ----------
@@ -138,8 +161,8 @@ function renderItems(r) {
   pending = r; r.lines.forEach(l => { l.price = db.prices[l.item]; });
   const rows = r.lines.map((l, i) => `<div class="f"><span>${esc(l.item)} × ${l.qty} ${esc(l.unit)}</span>` +
     (l.price ? `<b>${rupee(l.price * l.qty)}</b>` : `<input class="rate" data-i="${i}" type="number" min="1" inputmode="numeric" placeholder="₹ ${t('rate')}">`) + '</div>').join('');
-  $('#out').innerHTML = `<div class="card"><h2>${esc(r.customer)}</h2>${rows}<div id="tot"></div><div class="row"><button class="btn" id="yes">${t('save')}</button><button class="btn alt" id="no">${t('no')}</button></div></div>`;
-  $('#yes').onclick = saveEntry; $('#no').onclick = cancel;
+  $('#out').innerHTML = `<div class="card"><h2>${esc(r.customer)} <button class="ic" id="re" aria-label="Read aloud">🔊</button></h2>${rows}<div id="tot"></div><div class="row"><button class="btn" id="yes">${t('save')}</button><button class="btn alt" id="no">${t('no')}</button></div></div>`;
+  $('#yes').onclick = saveEntry; $('#no').onclick = cancel; $('#re').onclick = () => { calcItems(r); speak(readback(r)); };
   let tmr;
   document.querySelectorAll('.rate').forEach(inp => { inp.oninput = () => {
     r.lines[+inp.dataset.i].price = +inp.value || undefined; showTot(r); clearTimeout(tmr);
@@ -147,9 +170,8 @@ function renderItems(r) {
   showTot(r);
   const first = r.lines.findIndex(l => !l.price);
   if (first < 0) return confirmSpeak(r);
-  speak(`${r.lines[first].item} ${t('rate')}`);   // asks the rate once; it is remembered afterwards
-  setTimeout(() => { if (pending !== r) return; yesNo = listen(txt => {
-    const n = (normalize(txt).match(/\d+/) || [])[0], inp = document.querySelector(`.rate[data-i="${first}"]`); if (n && inp) { inp.value = n; inp.oninput(); } }); }, 2500);
+  speak(`${r.lines[first].item} ${t('rate')}`, () => { if (pending !== r) return; yesNo = listen(txt => {
+    const n = (normalize(txt).match(/\d+/) || [])[0], inp = document.querySelector(`.rate[data-i="${first}"]`); if (n && inp) { inp.value = n; inp.oninput(); } }); });
 }
 function showTot(r) {
   const ok = calcItems(r), box = $('#tot'), bad = r.flags.includes('paid');
@@ -203,87 +225,4 @@ function hist(c) {
 function renderList() {
   const rows = db.customers.map(c => ({ c, b: balance(c.id) })).sort((a, b) => b.b - a.b);
   $('#list').innerHTML = rows.map(({ c, b }) => `<li><div class="top" data-toggle="${c.id}"><span class="av">${esc(c.name[0] || '?')}</span><span class="nm">${badge(c.id)} ${esc(c.name)}</span><span class="amt ${b > 0 ? 'd' : 'z'}">${rupee(b)}</span></div>` +
-    (open.has(c.id) ? `<div class="hist">${trustLine(c.id)}${hist(c)}<div class="acts">${b > 0 ? `<button class="mini" data-remind="${c.id}">${t('remind')}</button>` : ''}<button class="mini" data-ren="${c.id}">${t('edit')}</button><button class="mini bad" data-delc="${c.id}">${t('del')}</button></div></div>` : '') + '</li>').join('');
-}
-$('#list').onclick = ev => {
-  const b = ev.target.closest('[data-toggle],[data-remind],[data-ren],[data-delc],[data-edit],[data-del]'); if (!b) return;
-  const d = b.dataset, cust = id => db.customers.find(c => c.id === +id);
-  if (d.toggle) { const id = +d.toggle; open.has(id) ? open.delete(id) : open.add(id); }
-  else if (d.remind) return remind(cust(d.remind));
-  else if (d.edit) return openDlg(db.entries.find(e => e.id === d.edit));
-  else if (d.ren) { const c = cust(d.ren), n = prompt(t('edit'), c.name); if (n && n.trim()) c.name = n.trim(); }
-  else if (d.delc) { const c = cust(d.delc); if (confirm(`${t('del')}? ${c.name}`)) { db.customers = db.customers.filter(x => x !== c); db.entries = db.entries.filter(e => e.customerId !== c.id); } }
-  else if (d.del && confirm(t('del') + '?')) db.entries = db.entries.filter(e => e.id !== d.del);
-  persist(); refresh();
-};
-function openDlg(e) {
-  editing = e || null; const c = e && db.customers.find(x => x.id === e.customerId);
-  $('#f-name').value = c ? c.name : ''; $('#f-total').value = e ? e.total : ''; $('#f-paid').value = e ? e.paid : ''; $('#f-items').value = e ? e.items : '';
-  $('#names').innerHTML = db.customers.map(x => `<option value="${esc(x.name)}">`).join(''); $('#d-err').textContent = ''; $('#dlg').showModal();
-}
-$('#sum').onclick = ev => { const b = ev.target.closest('[data-remind]'); if (b) remind(db.customers.find(c => c.id === +b.dataset.remind)); };
-$('#add').onclick = () => openDlg(null);
-$('#d-no').onclick = () => $('#dlg').close();
-$('#d-ok').onclick = () => {
-  const name = $('#f-name').value.trim(), total = +$('#f-total').value || 0, paid = +$('#f-paid').value || 0;
-  if (!name) return ($('#d-err').textContent = t('whose'));
-  if (total <= 0 && paid <= 0) return ($('#d-err').textContent = t('howmuch'));
-  const c = ensureCustomer(name), items = total === 0 ? 'payment' : ($('#f-items').value.trim() || 'saman');
-  const data = { customerId: c.id, total, paid, due: total - paid, items };
-  if (editing) Object.assign(editing, data); else db.entries.push({ id: rid(), timestamp: Date.now(), rawText: 'manual', ...data });
-  persist(); $('#dlg').close(); open.add(c.id); refresh();
-};
-function remind(c) {
-  let ph = c.phone;
-  if (!ph) { ph = (prompt('WhatsApp number (10 digits)') || '').replace(/\D/g, ''); if (ph.length !== 10) return; c.phone = ph; persist(); }
-  const msg = t('rm').replace('{n}', c.name).replace('{a}', Math.max(balance(c.id), 0));
-  window.open(`https://wa.me/91${ph}?text=${encodeURIComponent(msg)}`, '_blank');
-}
-
-// ---------- Summary ----------
-function summary() {
-  const td = db.entries.filter(x => isToday(x.timestamp));
-  return { sales: td.reduce((s, x) => s + x.total, 0), credit: td.filter(x => x.total).reduce((s, x) => s + Math.max(x.due, 0), 0), collected: td.reduce((s, x) => s + x.paid, 0) };
-}
-function renderSummary() {
-  const s = summary();
-  $('#sum').innerHTML = [['bikri', s.sales], ['udhaar', s.credit], ['jama', s.collected]].map(([k, v]) => `<div class="stat"><span>${t(k)}</span><b>${rupee(v)}</b></div>`).join('') + remindFirst() + '<button class="btn" id="read">🔊</button>';
-  $('#read').onclick = () => speak(`${t('bikri')} ${s.sales}. ${t('udhaar')} ${s.credit}. ${t('jama')} ${s.collected}`);
-}
-
-// ---------- shell ----------
-function refresh() {
-  const owed = db.customers.reduce((s, c) => s + Math.max(balance(c.id), 0), 0);
-  $('#strip').innerHTML = `${t('due')}: <b>${rupee(owed)}</b>`; renderList(); renderSummary();
-}
-function labels() {
-  document.documentElement.lang = lang; $('#lang').value = lang;
-  $('#l-bolo').textContent = t('bolo'); $('#go').textContent = t('go'); $('#say').placeholder = t('ph'); $('#add').textContent = t('add');
-  const ic = { bolo: '🎤', khata: '📒', hisaab: '📊' };
-  document.querySelectorAll('nav button').forEach(b => { b.textContent = `${ic[b.dataset.v]} ${t(b.dataset.v)}`; }); refresh();
-}
-function show(v) {
-  ['bolo', 'khata', 'hisaab'].forEach(x => { $('#v-' + x).hidden = x !== v; });
-  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
-  if (v === 'bolo') $('#say').focus();
-}
-document.querySelectorAll('nav button').forEach(b => { b.onclick = () => show(b.dataset.v); });
-$('#lang').onchange = e => { lang = e.target.value; localStorage.kv_lang = lang; labels(); };
-$('#go').onclick = onGo;
-$('#say').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onGo(); } });
-$('#mic').onclick = () => {
-  const b = $('#mic'); b.classList.add('rec'); $('#out').innerHTML = '<p class="ans">🎤 …</p>';
-  let got = false, shown = false;
-  const why = { 'not-allowed': 'Mic is blocked. Allow the microphone in the browser and in Windows Settings > Privacy > Microphone.', network: 'The browser speech service cannot be reached. Use Google Chrome, or dictate with Wispr Flow in the box.',
-    'no-speech': 'Heard nothing. Speak right after pressing the mic.', unsupported: 'This browser has no speech recognition. Use Google Chrome, or dictate with Wispr Flow in the box.',
-    'audio-capture': 'No microphone found.', 'language-not-supported': 'This language is not supported by the browser mic. Use Wispr Flow in the box.' };
-  listen(txt => { got = true; $('#say').value = txt; onGo(); }, err => {
-    b.classList.remove('rec');
-    if (got || shown) return;
-    shown = true;
-    $('#out').innerHTML = `<p class="warn">${esc(why[err || 'no-speech'] || 'Mic problem')} (${esc(err || 'ended')})</p>`;
-  });
-};
-$('#mode').onclick = () => { const k = prompt('Optional AI key (kept only on this device). Empty = offline parser.', localStorage.kv_key || ''); if (k !== null) { if (k.trim()) localStorage.kv_key = k.trim(); else localStorage.removeItem('kv_key'); } };
-$('#mode').textContent = localStorage.kv_key ? 'AI mode' : 'Key not set: offline parser used (tap to add)';
-labels(); show('bolo');
+    (op
