@@ -35,3 +35,7 @@ Data is kept in the browser's localStorage, so it works offline and never leaves
 2. Say "Ramesh ka kitna baaki hai". Hear the answer.
 3. Open Khata, tap Remind on Ramesh to open the WhatsApp message.
 4. Open Hisaab, tap the read-out button for the daily summary.
+
+## Unique features
+- **Say items, not amounts:** "Ramesh ko 2 kilo atta aur ek tel udhaar". The app asks the rate once (by voice or typing), remembers it per item, and makes the bill from then on.
+- **Udhaar trust meter:** each customer gets a green / yellow / red badge from how many days they usually take to pay and how old their oldest unpaid credit is. The Hisaab tab shows who to remind first.
