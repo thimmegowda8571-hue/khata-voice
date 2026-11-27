@@ -37,7 +37,7 @@ const NO = ['nahi', 'nahin', 'no', 'नहीं', 'नाही', 'இல்ல
 // ---------- storage ----------
 const day = n => Date.now() - n * 864e5, rid = () => Math.random().toString(36).slice(2);
 function seed() {
-  const c = ['Ramesh', 'Sunita Devi', 'Mohammed Irfan', 'Lakshmi'].map((name, i) => ({ id: i + 1, name, phone: '' }));
+  const c = ['Ashish', 'Geetha', 'Mohammed Irfan', 'Lakshmi'].map((name, i) => ({ id: i + 1, name, phone: '' }));
   const e = (cid, total, paid, items, d, raw) => ({ id: rid(), customerId: cid, total, paid, due: total - paid, items, timestamp: day(d), rawText: raw });
   return { customers: c, entries: [e(1, 450, 200, 'saman', 2, 'Ramesh ne 450 ka saman liya, 200 diya'), e(2, 1200, 0, 'atta, daal', 1, 'Sunita ne 1200 ka atta daal liya'),
     e(3, 300, 300, 'chai patti', 0, 'Irfan ne 300 ka chai patti liya nagad'), e(4, 800, 300, 'chawal', 3, 'Lakshmi ne 800 ka chawal liya, 300 diya'), e(1, 0, 100, 'payment', 1, 'Ramesh ne 100 diye')] };
