@@ -1,0 +1,5 @@
+services:
+  khatavoice:
+    build: .
+    ports:
+      - "8080:80"
